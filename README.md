@@ -5,9 +5,11 @@ SPDX-License-Identifier: Apache-2.0
 
 # PNLIO Kernel Autónomo Robótico (v7.2)
 
+![PNLIO Kernel Autónomo Robótico](assets/enfer.png)
+
 > Propuesta conceptual de un kernel de respuesta crítica que **limita la autonomía** de un sistema robótico según la coherencia de su enlace con el operador, con una **puerta de autorización humana** obligatoria.
 
-**Estado: diseño conceptual y simulación abstracta.** Este repositorio contiene dos documentos en PDF y este README. **No contiene código ejecutable, firmware ni hardware.** Las cifras de la sección de resultados vienen de una simulación cuyo código no está publicado aquí.
+**Estado: especificación conceptual v7.2 con implementación ejecutable integrada.** Los dos documentos PDF conservan la especificación y los resultados históricos; la implementación actual añade el núcleo de política, el adaptador serial y una CSP RP2040 de referencia. Las cifras de la sección de resultados histórica vienen de una simulación cuyo código no está publicado aquí y no deben interpretarse como validación del hardware integrado.
 
 ## Contenido del repositorio
 
@@ -104,3 +106,32 @@ Este repositorio es **documentación conceptual** de una puerta de autorización
 
 Licencia Apache 2.0 (ver `LICENSE`).
 © 2026 Gonzalo Mauricio De la Rivera Arellano · ORCID 0009-0001-9455-8416
+
+## Implementación PNLIO integrada
+
+Este repositorio conserva la especificación conceptual v7.2 y ahora incluye una implementación ejecutable del núcleo de política, separada de la capa física:
+
+- `pnlio_kernel.py`: RCR, estados `SAFE/RESTRICTED/NORMAL/FAULT`, autorización HMAC por acción, anti-replay y auditoría encadenada.
+- `adapters/csp_serial.py`: adaptador serial autenticado hacia una CSP.
+- `firmware/csp_rp2040.py`: firmware de referencia MicroPython para RP2040 con watchdog, heartbeat, límites duros y veto local.
+- `tests/test_kernel.py`: pruebas unitarias del núcleo.
+- `firmware/README.md`: contrato y límites de la CSP.
+- `AUDITORIA_SEGURIDAD_RENDIMIENTO.md`: auditoría del estado original y riesgos pendientes.
+- `ARTICULO_TECNICO_ARQUITECTURA_REAL.md`: artículo técnico sobre arquitectura operativa física.
+
+La implementación no es una simulación, pero tampoco es una certificación ni un despliegue terminado. El kernel no accede directamente a GPIO o actuadores; la CSP debe autenticar de nuevo las órdenes, aplicar límites físicos y conservar el veto final. El E-STOP debe cortar físicamente la habilitación de actuadores, independientemente del software.
+
+Para validar el núcleo sin dependencias externas:
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m py_compile pnlio_kernel.py adapters/csp_serial.py firmware/csp_rp2040.py
+```
+
+El firmware requiere un RP2040 y pruebas eléctricas/temporales instrumentadas. `AUTH_KEY` y `FW_HASH` son marcadores de provisión y deben sustituirse durante el proceso de build. El código es gratuito y extensible bajo Apache 2.0, manteniendo la atribución del creador y descubridor del concepto de PNL inversa ontológica.
+
+## Herramienta opcional ADÁN 2031
+
+`tools/despliegue_adan2031.py` es un instalador opcional para preparar un entorno local con Ollama, `phi3:mini` y lectura de PDF/Word/Excel. No forma parte del kernel PNLIO, de la CSP RP2040 ni del camino de control de actuadores, y no se ejecuta automáticamente.
+
+El instalador puede ejecutar `sudo apt-get`, instalar Ollama mediante un script remoto, descargar un modelo, crear un entorno virtual y escribir un lanzador de escritorio. Debe revisarse antes de ejecutarlo y solo utilizarse con autorización del operador. Su chat local no es una barrera de seguridad robótica y no debe recibir acceso a GPIO, PWM, relés ni actuadores. Consulte `tools/README.md`.
