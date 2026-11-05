@@ -118,6 +118,65 @@ Los módulos emiten **Intenciones** (`mover`, `hablar`, `alertar`, `manipular`) 
 
 El punto de actuación (`_ejecutar`) hoy solo implementa `hablar`. Una Intención `mover` aprobada **no mueve nada**: queda registrada.
 
+## Detalles técnicos
+
+Todo lo de esta sección sale de leer el código; es **diseño**, no medición.
+
+### Flujo de datos
+
+```
+SOLEDAD (adan)
+  entrada ─► memoria SQLite (FTS5) ─► prompt ─► Ollama /api/chat ─► respuesta ─► voz
+  cámara  ─► fotograma JPEG ─► detección de movimiento ─► persona_cerca ─┐
+                                                                         ▼
+  /robot run X Y ─► planificador (PID de giro) ─► SUPERVISOR ─► RobotSimulado
+
+EVA (eva)
+  módulos ─► Intención ─► PriorityQueue(urgencia, seq) ─► hilo del kernel ─► CSP.validar
+                                                                      ├─ OK ─► _ejecutar (solo "hablar")
+                                                                      └─ veto ─► registro (últimas 50)
+```
+
+### Orden de comprobaciones del supervisor (`filtrar`)
+
+Se evalúan en este orden; la primera que falla declara paro y devuelve (0, 0):
+
+1. Paro ya enganchado → (0, 0), ignora la orden.
+2. `dt` no finito o ≤ 0.
+3. `v_cmd` o `w_cmd` no finitos (NaN/inf).
+4. Orden caducada: `ahora − t_cmd > timeout_orden`.
+5. Sensor caducado (`ahora − t_sensor > timeout_sensor`) o distancia NaN. `inf` es válido y significa "nada detectado".
+6. `distancia ≤ d_parada`.
+
+Si todo pasa: se fija `v_tope = v_max`, se reduce a `v_cerca_persona` si hay movimiento en cámara, y entre `d_lento` y `d_parada` baja linealmente con piso `v_aproximacion` (evita quedarse colgado). Luego se limita `v` a `[0, v_tope]` (sin marcha atrás en este perfil) y `w` a `±w_max`, y por último se limita la tasa de cambio: `+a_max·dt` al acelerar, `−a_max·freno_factor·dt` al frenar, `±alfa_max·dt` en giro.
+
+### Núcleo robótico simulado
+
+- Modelo: monociclo 2D (`x, y, θ`). Sensor frontal de distancia en un cono de ±0,35 rad, con distancia `hypot(dx, dy) − r` al obstáculo circular más cercano.
+- Ciclo de 20 Hz (`DT = 0.05 s`), `t_max = 90 s`, tolerancia de llegada 0,10 m.
+- Planificador: error de rumbo envuelto a `(−π, π]`; `w` sale de un PID (`kp=2.0, ki=0.05, kd=0.1`, saturación 1.0, `τ_d=0.05`); `v = clamp(0.8·dist, 0, v_max) · max(0, cos(error))`.
+- PID: anti-windup por integración condicional (integra solo si no empuja la saturación), derivada sobre la medida con filtro de primer orden `α = dt/(τ + dt)`, rechaza `dt ≤ 0`.
+- Fallas inyectables hoy: `sensor_congelado` (el sello de tiempo no avanza) y `falla_orden_en` (el planificador deja de emitir en el segundo indicado). **No implementadas:** retraso de sensor 2 a 5 veces, pérdida de comunicación, reloj atascado. NaN solo se prueba directamente sobre el supervisor.
+- Modo fijo `SIMULACION`; cualquier otro lanza `RuntimeError("Hardware real bloqueado…")`. Con paro enganchado, `run` se rechaza hasta `rearmar()`.
+
+### Contrato de Intenciones (EVA)
+
+`Intencion(modulo, tipo, payload, urgencia)`, con `tipo ∈ {mover, hablar, alertar, manipular}` y `urgencia ∈ {0, 1, 2}` (0 es la más urgente). La cola es una `PriorityQueue` ordenada por `(urgencia, seq)`; un hilo demonio la consume con `get(timeout=0.01)`. `CSP.validar` comprueba, en orden: paro de emergencia, `vel > velocidad_max` y zona de exclusión. Esas dos últimas comprobaciones solo se aplican a `mover`; los demás tipos pasan sin validación de límites. `_ejecutar` solo implementa `hablar`.
+
+### Memoria (SOLEDAD)
+
+SQLite en modo WAL con claves foráneas. Tablas: `conversations(id, created_at, title)`, `messages(id, conversation_id, role, content, created_at)` con `role ∈ {user, assistant}`, y `memory_notes(id, note, created_at)`. Búsqueda con una tabla virtual FTS5 de contenido externo (`memory_notes_fts`) mantenida por triggers de insert, delete y update, y reconstruida con `rebuild` si el índice es nuevo sobre notas antiguas. La consulta toma hasta 8 palabras de más de 2 letras, las entrecomilla y las une con `OR`; si FTS5 no está disponible o no devuelve nada, cae a `LIKE` con escape. Contexto por turno: últimos 12 mensajes y hasta 5 notas.
+
+### Integración con Ollama
+
+- Chat: `POST /api/chat` con `stream: false` (SOLEDAD) o `stream: true` (ADÁN y EVA). El prompt de sistema de SOLEDAD incluye fecha/hora, estado de sensores, estado del núcleo robótico y las notas recuperadas.
+- Visión: la capacidad multimodal se detecta con `POST /api/show` (`capabilities` contiene `vision`), con lista de respaldo (`moondream`, `llava`, `llavaphi3`, `bakllava`, `llama3.2-vision`, `minicpmv`). La imagen viaja en base64 dentro del último mensaje de usuario. EVA usa `POST /api/generate` y prueba `moondream`, `llava:phi3` y `llava` en ese orden.
+- Estado: `GET /api/tags`.
+
+### RAG (EVA)
+
+Trozos de 600 caracteres con solape de 150 (se descartan los de menos de 30 caracteres útiles), embeddings con `all-MiniLM-L6-v2` e índice FAISS `IndexFlatL2` con k = 4. El índice vive **en memoria**: se pierde al cerrar EVA y los documentos hay que volver a subirlos. El chat conserva los últimos 4 turnos.
+
 ## Autoprueba del núcleo robótico
 
 Son 15 comprobaciones, cada una puede fallar:
@@ -150,6 +209,10 @@ Revisados leyendo el código; **no** se ejecutaron para escribir este README.
 | `PNLIO_Sistema_Robotico_Simbiotico_v7_2.pdf` | Documento histórico v7.2 |
 
 Sobre v7.2: el sistema descrito allí (RCR, niveles de falla, certificación Monte Carlo) es una línea anterior. Sus cifras no se reproducen en este README y no deben citarse como validación de seguridad: las simulaciones comprobaban que el gate se cierra cuando la métrica baja, no que la métrica refleje una degradación real. Las partes de v7.2 con control de fuego no forman parte del ecosistema actual.
+
+## Nota de visión
+
+Si hubiera recursos, el camino sería por etapas: simulación seria (ROS 2 y fallas inyectadas), banco con corte de energía por hardware, campo controlado con alguien más sosteniendo el paro, y solo después uso con personas, con revisión externa de seguridad. Hoy el proyecto está en la primera etapa. Es un plan, no un resultado.
 
 ## Licencia
 
