@@ -49,10 +49,10 @@ Asistencia civil local: consulta de documentos, memoria de conversación, percep
 
 ## Instalación
 
-El instalador es un solo archivo, `despliegue_pnlio2031.py`, que contiene el código de los tres componentes.
+El instalador es un solo archivo que contiene el código de los tres componentes (en el repositorio: `despliegue_adan2031.py` y la versión `despliegue_adan2031_v1.3.1.py`; confirma cuál corresponde a este README antes de ejecutarlo).
 
 ```bash
-python3 despliegue_pnlio2031.py
+python3 despliegue_adan2031.py
 ```
 
 Qué hace, en orden: comprueba disco y RAM; instala dependencias con apt; instala Ollama si falta y levanta el servicio (puerto 11434); descarga `phi3:mini` (~2.3 GB) y `moondream` (~1.8 GB); crea un entorno virtual en `~/pnlio2031/env`; instala las librerías; escribe los tres componentes; crea los comandos `adan` y `eva` en `~/.local/bin` y lanzadores de escritorio; ejecuta la autoprueba del núcleo robótico.
@@ -201,12 +201,20 @@ Revisados leyendo el código; **no** se ejecutaron para escribir este README.
 
 ## Archivos del repositorio
 
-| Archivo | Contenido |
+| Ruta | Contenido |
 |---|---|
 | `README.md` | Este documento |
-| `despliegue_pnlio2031.py` | Instalador unificado (pendiente de subir; hoy está como PDF de referencia) |
-| `PNLIO_Framework_v7.2_Certificacion_Simulaciones.md.pdf` | Documento histórico v7.2 |
-| `PNLIO_Sistema_Robotico_Simbiotico_v7_2.pdf` | Documento histórico v7.2 |
+| `LICENSE`, `NOTICE` | Apache License 2.0 y atribución |
+| `despliegue_adan2031.py`, `despliegue_adan2031_v1.3.1.py`, `tools/despliegue_adan2031.py` | Instaladores (versiones del despliegue) |
+| `pnlio_kernel.py` | Kernel PNLIO |
+| `adapters/csp_serial.py`, `firmware/csp_rp2040.py` (+ `firmware/README.md`) | Adaptador serie y firmware de la CSP |
+| `tests/test_kernel.py` | Pruebas del kernel |
+| `ARTICULO_TECNICO_ARQUITECTURA_REAL.md`, `AUDITORIA_SEGURIDAD_RENDIMIENTO.md`, `README_MEJORADO.md` | Documentos técnicos y de auditoría |
+| `PNLIO_Framework_v7.2_Certificacion_Simulaciones.md.pdf`, `PNLIO_Sistema_Robotico_Simbiotico_v7_2.pdf` | Documentos históricos v7.2 |
+| `eva y adan.pdf` | Código del despliegue unificado, como referencia documental |
+| `portada.jpg`, `assets/enfer.png` | Imágenes |
+
+**Alcance de este README.** Describe el código del despliegue unificado ADÁN + SOLEDAD + EVA (`eva y adan.pdf`). **No cubre** `pnlio_kernel.py`, `adapters/` ni `firmware/`: esas partes no se revisaron para este documento, así que lo dicho aquí sobre el bloqueo de hardware real y la simulación no se extiende a ellas hasta que se revisen y se mida.
 
 Sobre v7.2: el sistema descrito allí (RCR, niveles de falla, certificación Monte Carlo) es una línea anterior. Sus cifras no se reproducen en este README y no deben citarse como validación de seguridad: las simulaciones comprobaban que el gate se cierra cuando la métrica baja, no que la métrica refleje una degradación real. Las partes de v7.2 con control de fuego no forman parte del ecosistema actual.
 
@@ -216,6 +224,6 @@ Si hubiera recursos, el camino sería por etapas: simulación seria (ROS 2 y fal
 
 ## Licencia
 
-Apache License 2.0. El repositorio debe incluir `LICENSE` (texto completo) y `NOTICE` (copyright y atribución) — **pendiente de agregar**. Las dependencias deben tener licencia compatible con Apache 2.0 (MIT, BSD o Apache; no GPLv2 ni AGPL): revisa cada una antes de publicar.
+Apache License 2.0. El repositorio incluye `LICENSE` (texto completo) y `NOTICE` (copyright y atribución). Las dependencias deben tener licencia compatible con Apache 2.0 (MIT, BSD o Apache; no GPLv2 ni AGPL): revisa cada una antes de publicar.
 
 © 2026 Gonzalo Mauricio De la Rivera Arellano · Apache 2.0
