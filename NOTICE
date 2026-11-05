@@ -1,7 +1,6 @@
-PNLIO Robot Kernel
+PNLIO 2031 — ADÁN + SOLEDAD Kernel + EVA
+Copyright 2026 Gonzalo Mauricio De la Rivera Arellano
 
-Copyright 2026 Gonzalo Mauricio De la Rivera Arellano.
-
-La atribución del concepto de PNL inversa ontológica corresponde a Gonzalo Mauricio De la Rivera Arellano.
-
-Este proyecto implementa una política de seguridad y autorización en software. No contiene control físico de actuadores ni constituye una certificación de seguridad funcional, ciberseguridad o aptitud para operar sobre personas o infraestructura crítica.
+Este producto incluye software desarrollado por
+Gonzalo Mauricio De la Rivera Arellano.
+Licenciado bajo Apache License, Version 2.0 (ver LICENSE).
