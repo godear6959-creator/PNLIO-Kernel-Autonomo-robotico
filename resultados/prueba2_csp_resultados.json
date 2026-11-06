@@ -1,0 +1,46 @@
+{
+    "fecha_utc": "2026-11-06T16:43:12.572122+00:00",
+    "prueba": "PNLIO CSP - Etapa 2",
+    "transporte": "pyserial loop://",
+    "motores": false,
+    "hardware_fisico": false,
+    "pruebas": {
+        "A": {
+            "descripcion": "Rechazo de MAC incorrecto",
+            "resultado": "OK"
+        },
+        "B": {
+            "descripcion": "ARM sin heartbeat / ARM con heartbeat",
+            "resultado": "OK"
+        },
+        "C": {
+            "descripcion": "INTENT valido de velocidad y par",
+            "resultado": "OK"
+        },
+        "D": {
+            "descripcion": "Limite excedido y rechazo de NaN",
+            "resultado": "OK"
+        },
+        "E": {
+            "descripcion": "Corte por perdida de heartbeat",
+            "resultado": "OK"
+        },
+        "F": {
+            "descripcion": "DISARM y puesta a cero",
+            "resultado": "OK"
+        },
+        "G": {
+            "descripcion": "Bloqueo por bumper simulado",
+            "resultado": "OK"
+        },
+        "H": {
+            "descripcion": "Bloqueo por E-STOP simulado",
+            "resultado": "OK"
+        }
+    },
+    "resumen": {
+        "aprobadas": 8,
+        "total": 8
+    },
+    "estado": "PASSED"
+}
