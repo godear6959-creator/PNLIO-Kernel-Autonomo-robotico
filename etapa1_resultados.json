@@ -1,0 +1,38 @@
+{
+    "timestamp": 1793981662.40864,
+    "pruebas": {
+        "A": {
+            "descripcion": "HELLO y MAC incorrecto",
+            "resultado": "OK"
+        },
+        "B": {
+            "descripcion": "ARM sin heartbeat / ARM correcto",
+            "resultado": "OK"
+        },
+        "C": {
+            "descripcion": "INTENT de velocidad y par (PWM GP5/GP6)",
+            "resultado": "OK"
+        },
+        "D": {
+            "descripcion": "L\u00edmite de velocidad superado y NaN",
+            "resultado": "OK"
+        },
+        "E": {
+            "descripcion": "Corte por p\u00e9rdida de heartbeat",
+            "resultado": "OK"
+        },
+        "F": {
+            "descripcion": "Comando DISARM",
+            "resultado": "OK"
+        },
+        "G": {
+            "descripcion": "Validaci\u00f3n de Bumper y Sensores",
+            "resultado": "OK"
+        },
+        "H": {
+            "descripcion": "Validaci\u00f3n de E-STOP f\u00edsico",
+            "resultado": "OK"
+        }
+    },
+    "estado": "PASSED"
+}
