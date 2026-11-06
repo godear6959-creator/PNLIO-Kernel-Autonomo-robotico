@@ -83,6 +83,37 @@ class KernelTests(unittest.TestCase):
             self.assertEqual(rows[1]["sequence"], 2)
             self.assertEqual(len(rows[0]["entry_hash"]), 64)
 
+    def test_non_finite_samples_are_rejected(self):
+        with TemporaryDirectory() as tmp:
+            kernel = make_kernel(tmp)
+            for sample_value in (
+                RCRSample(1.0, 1.0, float("nan"), time.time()),
+                RCRSample(1.0, 1.0, 0.0, float("nan")),
+                RCRSample(1.0, 1.0, 0.0, time.time(), float("nan")),
+            ):
+                with self.assertRaises(ValueError):
+                    kernel.ingest_sample(sample_value)
+            self.assertIs(kernel.state, SafetyState.SAFE)
+            self.assertIsNone(kernel.rcr)
+
+    def test_tampered_audit_is_rejected_on_recovery(self):
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.jsonl"
+            log = AuditLog(path, b"audit-key")
+            log.append("one", {})
+            row = json.loads(path.read_text().splitlines()[0])
+            row["event"] = "tampered"
+            path.write_text(json.dumps(row) + "\n")
+            with self.assertRaises(RuntimeError):
+                AuditLog(path, b"audit-key")
+
+    def test_non_finite_authorization_parameters_are_rejected(self):
+        with TemporaryDirectory() as tmp:
+            kernel = make_kernel(tmp)
+            kernel.ingest_sample(sample(0.8))
+            with self.assertRaises(ValueError):
+                kernel.issue_authorization("a-nan", "operator-1", {"limit": float("nan")})
+
 
 if __name__ == "__main__":
     unittest.main()

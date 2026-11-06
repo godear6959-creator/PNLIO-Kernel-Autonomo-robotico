@@ -11,6 +11,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
+import os
 import secrets
 import time
 from collections import deque
@@ -37,6 +39,11 @@ class RCRSample:
     quality: float = 1.0
 
     def validate(self) -> None:
+        if not all(math.isfinite(value) for value in (
+            self.intensity, self.coherence, self.entropy,
+            self.timestamp, self.quality,
+        )):
+            raise ValueError("todos los campos de la muestra deben ser finitos")
         if not 0.0 <= self.intensity <= 1.0:
             raise ValueError("intensity debe estar entre 0 y 1")
         if not 0.0 <= self.coherence <= 1.0:
@@ -79,21 +86,35 @@ class AuditLog:
     def _recover_tail(self) -> tuple[int, str]:
         if not self.path.exists():
             return 0, "0" * 64
-        last = ""
+        expected_sequence = 1
+        previous_hash = "0" * 64
+        last_sequence = 0
         with self.path.open("r", encoding="utf-8") as stream:
             for line in stream:
-                if line.strip():
-                    last = line
-        if not last:
-            return 0, "0" * 64
-        try:
-            entry = json.loads(last)
-            return int(entry["sequence"]), str(entry["entry_hash"])
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise RuntimeError("el log de auditoría está corrupto") from exc
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    sequence = int(entry["sequence"])
+                    entry_hash = str(entry["entry_hash"])
+                    if sequence != expected_sequence:
+                        raise ValueError("secuencia no monotónica")
+                    if entry["previous_hash"] != previous_hash:
+                        raise ValueError("cadena anterior no coincide")
+                    unsigned = dict(entry)
+                    unsigned.pop("entry_hash")
+                    expected_hash = self._entry_hmac(unsigned)
+                    if not hmac.compare_digest(expected_hash, entry_hash):
+                        raise ValueError("HMAC de entrada inválido")
+                except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise RuntimeError("el log de auditoría está corrupto") from exc
+                previous_hash = entry_hash
+                last_sequence = sequence
+                expected_sequence += 1
+        return last_sequence, previous_hash
 
     def _entry_hmac(self, entry: dict[str, Any]) -> str:
-        canonical = json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        canonical = json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
         return hmac.new(self._key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
 
     def append(self, event: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -109,6 +130,7 @@ class AuditLog:
             with self.path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(entry, sort_keys=True, ensure_ascii=False) + "\n")
                 stream.flush()
+                os.fsync(stream.fileno())
             self._sequence = entry["sequence"]
             self._previous_hash = entry["entry_hash"]
             return entry
@@ -139,6 +161,8 @@ class PNLIOKernel:
         self.restricted_threshold = restricted_threshold
         self.safe_threshold = safe_threshold
         self.sample_max_age_s = sample_max_age_s
+        if not math.isfinite(sample_max_age_s) or sample_max_age_s <= 0:
+            raise ValueError("sample_max_age_s debe ser finito y positivo")
         self.clock = clock
         self._boot_time = clock()
         self._samples: Deque[float] = deque(maxlen=window_size)
@@ -150,17 +174,24 @@ class PNLIOKernel:
 
     @staticmethod
     def parameters_hash(parameters: dict[str, Any]) -> str:
-        raw = json.dumps(parameters, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        raw = json.dumps(parameters, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def ingest_sample(self, sample: RCRSample) -> float:
         with self._lock:
             try:
                 sample.validate()
+                if not all(math.isfinite(value) for value in (
+                    sample.intensity, sample.coherence, sample.entropy,
+                    sample.timestamp, sample.quality,
+                )):
+                    raise ValueError("todos los campos de la muestra deben ser finitos")
                 age = self.clock() - sample.timestamp
                 if age < -0.5 or age > self.sample_max_age_s or sample.quality <= 0.0:
                     raise ValueError("muestra ausente, futura o demasiado antigua")
                 value = sample.value()
+                if not math.isfinite(value):
+                    raise ValueError("valor RCR no finito")
             except ValueError as exc:
                 self._transition(SafetyState.SAFE, "sample_denied", {"reason": str(exc)})
                 self.audit.append("sample_denied", {"reason": str(exc)})
@@ -259,11 +290,15 @@ class ActuatorGuard:
                 raise PermissionError("actuador bloqueado: autorización inválida o estado inseguro")
             self.kernel._used_nonces.add(auth.nonce)
             self.kernel.audit.append("authorization_verified", {"action_id": auth.action_id, "operator_id": auth.operator_id})
-            try:
-                result = hardware_action(parameters)
-            except Exception as exc:
+        # Do not hold the kernel lock across external I/O. The physical CSP
+        # must revalidate state, nonce and limits at the handoff boundary.
+        try:
+            result = hardware_action(parameters)
+        except Exception as exc:
+            with self.kernel._lock:
                 self.kernel.audit.append("actuator_error", {"action_id": auth.action_id, "error": type(exc).__name__})
                 self.kernel._transition(SafetyState.FAULT, "actuator_error")
-                raise
+            raise
+        with self.kernel._lock:
             self.kernel.audit.append("actuator_released", {"action_id": auth.action_id})
-            return result
+        return result
